@@ -26,3 +26,9 @@ kubectl port-forward $NETSTATS_POD_NAME 3000
 
 # Open http://localhost:3000 in a browser
 ```
+
+### View logs
+```
+kubectl logs -f node-0 -c tendermint  # Follow tendermint logs for node-0
+kubectl logs -f node-0 -c ethermint  # Follow ethermint logs for node-0
+```
