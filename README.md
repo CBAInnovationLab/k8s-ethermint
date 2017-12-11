@@ -4,7 +4,7 @@ This repo contains the config and manifests required to deploy a 4 node ethermin
 
 ## Usage
 
-1. Create a Kubernetes cluster on Google Cloud
+1. Create a Kubernetes cluster on Google Cloud (make sure version is > 1.8.x)
 2. Configure your `kubectl` to point to this cluster
 3. Run `./bin/deploy.sh`
 4. Wait for the containers to deploy and be ready
