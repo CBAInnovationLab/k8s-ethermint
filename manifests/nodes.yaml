@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ethermint
+  labels:
+    app: ethermint
+spec:
+  publishNotReadyAddresses: true
+  ports:
+  - port: 8545
+    name: rpc
+  clusterIP: None  # Headless service to allow peers to find each other
+  selector:
+    app: ethermint
+---
+apiVersion: apps/v1beta2 # for versions before 1.8.0 use apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: node
+spec:
+  serviceName: "ethermint"
+  podManagementPolicy: "Parallel"
+  replicas: 4
+  selector:
+    matchLabels:
+      app: ethermint
+  template:
+    metadata:
+      labels:
+        app: ethermint
+    spec:
+      containers:
+      - name: tendermint
+        image: cbainnovationlab/tendermint:latest
+        imagePullPolicy: Always
+        command:
+        - bash
+        - "-c"
+        - |
+          set -e
+
+          # Ethermint currently crashes if seeds can't be resolved...
+          wait_for_host()
+          {
+            HOST=$1
+            echo "Waiting for $HOST"
+            i=0
+            until $(wget -q $HOST); do
+              i=$(($i + 1))
+
+              if [ $i -ge 100 ]; then
+                break;
+              fi
+
+              echo '...'
+              sleep 1
+            done
+          }
+
+          seeds=""
+          for i in `seq 4`
+          do
+            ordinal=$(($i - 1))
+            host="node-${ordinal}.ethermint"
+            sep=""
+            if [ ${#seeds} -gt 0 ]; then
+              sep=","
+            fi
+            if [ "$HOSTNAME.ethermint" != "$host" ]; then
+              seeds="${seeds}${sep}${host}:46656"
+
+              set +e
+              wait_for_host "http://${host}:8545"
+              set -e
+            fi
+          done
+
+          mkdir -p ~/.tendermint
+          cp -f config/tendermint-genesis.json .tendermint/genesis.json
+          cp -f "secrets/$HOSTNAME.priv_validator.json" .tendermint/priv_validator.json
+
+          echo "Starting Tendermint with seeds: $seeds"
+          docker-entrypoint.sh --p2p.seeds="$seeds"
+        ports:
+        - containerPort: 46656
+          name: p2p
+        volumeMounts:
+        - name: tendermint-config
+          mountPath: /home/tendermint/config
+          readOnly: true
+        - name: tendermint-secrets
+          mountPath: /home/tendermint/secrets
+          readOnly: true
+
+      - name: ethermint
+        image: cbainnovationlab/ethermint:latest
+        imagePullPolicy: Always
+        env:
+        - name: ETH_GENESIS_PATH
+          value: "/home/ethermint/config/ethereum-genesis.json"
+        - name: TENDERMINT_ADDR
+          value: "tcp://127.0.0.1:46657"
+        command:
+        - sh
+        - "-c"
+        - |
+          docker-entrypoint.sh --rpc --rpcapi="admin,db,eth,debug,miner,net,shh,txpool,personal,web3" --rpcaddr="0.0.0.0" --rpccorsdomain="*" --gasprice=0 --targetgaslimit=34359738368
+        ports:
+        - containerPort: 8545
+          name: rpc
+        volumeMounts:
+        - name: ethermint-config
+          mountPath: /home/ethermint/config
+          readOnly: true
+
+      - name: netstats-client
+        image: cbainnovationlab/eth-netstats-client:latest
+        imagePullPolicy: Always
+        env:
+        - name: WS_SERVER
+          value: "ws://netstats-api:3000"
+        - name: WS_SECRET
+          value: "yIxY2iiX70v3ZHJ13Lb32FvGzo5UxBd5"
+        - name: LISTENING_PORT
+          value: "46656"
+
+      volumes:
+        - name: ethermint-config
+          configMap:
+            name: ethermint-config
+        - name: tendermint-config
+          configMap:
+            name: tendermint-config
+        - name: tendermint-secrets
+          secret:
+            secretName: tendermint-secrets

@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: netstats-api
+spec:
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+  type: NodePort
+  selector:
+    app: netstats-api
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: netstats-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netstats-api
+  template:
+    metadata:
+      labels:
+        app: netstats-api
+    spec:
+      containers:
+      - name: netstats-api
+        image: cbainnovationlab/eth-netstats:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http-port
+          containerPort: 3000
+        env:
+        - name: WS_SECRET
+          value: "yIxY2iiX70v3ZHJ13Lb32FvGzo5UxBd5"
